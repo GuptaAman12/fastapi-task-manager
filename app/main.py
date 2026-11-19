@@ -4,6 +4,7 @@ import os
 import jwt
 from pwdlib import PasswordHash
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -20,6 +21,28 @@ TOKEN_EXPIRE_MINUTES = 30
 
 password_hash = PasswordHash.recommended()
 
+security = HTTPBearer()
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return user
+
 
 @app.get("/")
 def home():
@@ -32,11 +55,15 @@ def health_check():
 
 
 @app.post("/tasks", response_model=schemas.TaskResponse)
-def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
+def create_task(
+    task: schemas.TaskCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     new_task = models.Task(
         title=task.title,
         description=task.description,
-        user_id=1
+        user_id=current_user.id
     )
 
     db.add(new_task)
@@ -47,14 +74,26 @@ def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/tasks", response_model=list[schemas.TaskResponse])
-def get_tasks(db: Session = Depends(get_db)):
-    tasks = db.query(models.Task).all()
+def get_tasks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    tasks = db.query(models.Task).filter(
+        models.Task.user_id == current_user.id
+    ).all()
     return tasks
 
 
 @app.get("/tasks/{task_id}", response_model=schemas.TaskResponse)
-def get_one_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+def get_one_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    task = db.query(models.Task).filter(
+        models.Task.id == task_id,
+        models.Task.user_id == current_user.id
+    ).first()
 
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -66,9 +105,13 @@ def get_one_task(task_id: int, db: Session = Depends(get_db)):
 def update_task(
     task_id: int,
     task_data: schemas.TaskUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    task = db.query(models.Task).filter(
+        models.Task.id == task_id,
+        models.Task.user_id == current_user.id
+    ).first()
 
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -84,8 +127,15 @@ def update_task(
 
 
 @app.delete("/tasks/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    task = db.query(models.Task).filter(
+        models.Task.id == task_id,
+        models.Task.user_id == current_user.id
+    ).first()
 
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -142,7 +192,7 @@ def login_user(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
     )
 
     token_data = {
-        "sub": user.email,
+        "sub": str(user.id),
         "exp": expiry_time
     }
 
