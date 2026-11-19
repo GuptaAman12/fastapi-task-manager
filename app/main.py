@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import os
+from typing import Literal
 
 import jwt
 from pwdlib import PasswordHash
@@ -15,7 +16,7 @@ app = FastAPI(title="Task Management API")
 
 Base.metadata.create_all(bind=engine)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "local-practice-key-12345678")
+SECRET_KEY = os.getenv("SECRET_KEY", "local-practice-key-1234567890123456")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 30
 
@@ -63,6 +64,9 @@ def create_task(
     new_task = models.Task(
         title=task.title,
         description=task.description,
+        status=task.status,
+        priority=task.priority,
+        due_date=task.due_date,
         user_id=current_user.id
     )
 
@@ -75,13 +79,18 @@ def create_task(
 
 @app.get("/tasks", response_model=list[schemas.TaskResponse])
 def get_tasks(
+    status: Literal["Pending", "In Progress", "Completed"] | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    tasks = db.query(models.Task).filter(
+    query = db.query(models.Task).filter(
         models.Task.user_id == current_user.id
-    ).all()
-    return tasks
+    )
+
+    if status is not None:
+        query = query.filter(models.Task.status == status)
+
+    return query.all()
 
 
 @app.get("/tasks/{task_id}", response_model=schemas.TaskResponse)
@@ -118,7 +127,9 @@ def update_task(
 
     task.title = task_data.title
     task.description = task_data.description
-    task.is_completed = task_data.is_completed
+    task.status = task_data.status
+    task.priority = task_data.priority
+    task.due_date = task_data.due_date
 
     db.commit()
     db.refresh(task)
