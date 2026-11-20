@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Task Manager</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 950px; margin: 30px auto; padding: 0 15px; }
+    h1 { margin-bottom: 4px; }
+    section { border: 1px solid #ddd; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
+    label { display: block; margin-top: 8px; font-size: 14px; }
+    input, select { padding: 6px; width: 100%; max-width: 340px; box-sizing: border-box; }
+    button { margin-top: 12px; padding: 7px 13px; cursor: pointer; }
+    #message { color: #b00; min-height: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Task Manager</h1>
+  <p>Logged in: <span id="loginStatus">no</span> <button id="logoutBtn">Logout</button></p>
+  <div id="message"></div>
+
+  <section>
+    <h2>Register</h2>
+    <label>Name <input id="regName"></label>
+    <label>Email <input id="regEmail" type="email"></label>
+    <label>Password <input id="regPassword" type="password"></label>
+    <button id="registerBtn">Register</button>
+  </section>
+
+  <section>
+    <h2>Login</h2>
+    <label>Email <input id="loginEmail" type="email"></label>
+    <label>Password <input id="loginPassword" type="password"></label>
+    <button id="loginBtn">Login</button>
+  </section>
+
+  <section>
+    <h2>Tasks</h2>
+    <label>Filter by status
+      <select id="filterStatus">
+        <option value="">All</option>
+        <option value="Pending">Pending</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Completed">Completed</option>
+      </select>
+    </label>
+    <button id="filterBtn">Apply filter</button>
+    <div id="taskList"></div>
+  </section>
+
+  <section>
+    <h2 id="formTitle">Create task</h2>
+    <label>Title <input id="taskTitle"></label>
+    <label>Description <input id="taskDescription"></label>
+    <label>Status
+      <select id="taskStatus">
+        <option value="Pending">Pending</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Completed">Completed</option>
+      </select>
+    </label>
+    <label>Priority
+      <select id="taskPriority">
+        <option value="Low">Low</option>
+        <option value="Medium" selected>Medium</option>
+        <option value="High">High</option>
+      </select>
+    </label>
+    <label>Due date <input id="taskDueDate" type="date"></label>
+    <button id="saveBtn">Create task</button>
+    <button id="cancelBtn" class="hidden">Cancel edit</button>
+  </section>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+    let token = localStorage.getItem("token");
+    let tasks = [];
+    let editingId = null;
+
+    function setMessage(text) {
+      document.getElementById("message").textContent = text;
+    }
+
+    function safe(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function updateLoginStatus() {
+      document.getElementById("loginStatus").textContent = token ? "yes" : "no";
+    }
+
+    async function api(path, options) {
+      const headers = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = "Bearer " + token;
+      }
+      const response = await fetch(API + path, Object.assign({}, options, { headers: headers }));
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        throw new Error(data.detail || ("Request failed: " + response.status));
+      }
+      return data;
+    }
+
+    async function register() {
+      try {
+        await api("/register", {
+          method: "POST",
+          body: JSON.stringify({
+            name: document.getElementById("regName").value,
+            email: document.getElementById("regEmail").value,
+            password: document.getElementById("regPassword").value
+          })
+        });
+        setMessage("Registered. Now log in.");
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    async function login() {
+      try {
+        const data = await api("/login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: document.getElementById("loginEmail").value,
+            password: document.getElementById("loginPassword").value
+          })
+        });
+        token = data.access_token;
+        localStorage.setItem("token", token);
+        updateLoginStatus();
+        setMessage("Logged in.");
+        await loadTasks();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    function logout() {
+      token = null;
+      localStorage.removeItem("token");
+      tasks = [];
+      renderTasks([]);
+      resetForm();
+      updateLoginStatus();
+      setMessage("Logged out.");
+    }
+
+    async function loadTasks() {
+      const status = document.getElementById("filterStatus").value;
+      let path = "/tasks";
+      if (status !== "") {
+        path += "?status=" + encodeURIComponent(status);
+      }
+      tasks = await api(path);
+      renderTasks(tasks);
+    }
+
+    async function refresh() {
+      try {
+        await loadTasks();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    function renderTasks(items) {
+      const list = document.getElementById("taskList");
+      if (items.length === 0) {
+        list.innerHTML = "<p>No tasks found.</p>";
+        return;
+      }
+      let html = "<table><tr><th>Title</th><th>Description</th><th>Status</th>" +
+        "<th>Priority</th><th>Due date</th><th>Actions</th></tr>";
+      for (const task of items) {
+        html += "<tr><td>" + safe(task.title) + "</td><td>" + safe(task.description) +
+          "</td><td>" + safe(task.status) + "</td><td>" + safe(task.priority) +
+          "</td><td>" + safe(task.due_date || "-") + "</td><td>" +
+          "<button onclick='editTask(" + task.id + ")'>Edit</button> " +
+          "<button onclick='deleteTask(" + task.id + ")'>Delete</button></td></tr>";
+      }
+      list.innerHTML = html + "</table>";
+    }
+
+    function resetForm() {
+      editingId = null;
+      document.getElementById("formTitle").textContent = "Create task";
+      document.getElementById("saveBtn").textContent = "Create task";
+      document.getElementById("cancelBtn").classList.add("hidden");
+      document.getElementById("taskTitle").value = "";
+      document.getElementById("taskDescription").value = "";
+      document.getElementById("taskStatus").value = "Pending";
+      document.getElementById("taskPriority").value = "Medium";
+      document.getElementById("taskDueDate").value = "";
+    }
+
+    function editTask(id) {
+      const task = tasks.find(function (item) { return item.id === id; });
+      if (!task) {
+        return;
+      }
+      editingId = id;
+      document.getElementById("formTitle").textContent = "Edit task #" + id;
+      document.getElementById("saveBtn").textContent = "Update task";
+      document.getElementById("cancelBtn").classList.remove("hidden");
+      document.getElementById("taskTitle").value = task.title;
+      document.getElementById("taskDescription").value = task.description;
+      document.getElementById("taskStatus").value = task.status;
+      document.getElementById("taskPriority").value = task.priority;
+      document.getElementById("taskDueDate").value = task.due_date || "";
+    }
+
+    async function saveTask() {
+      const data = {
+        title: document.getElementById("taskTitle").value,
+        description: document.getElementById("taskDescription").value,
+        status: document.getElementById("taskStatus").value,
+        priority: document.getElementById("taskPriority").value,
+        due_date: document.getElementById("taskDueDate").value || null
+      };
+      try {
+        if (editingId === null) {
+          await api("/tasks", { method: "POST", body: JSON.stringify(data) });
+          setMessage("Task created.");
+        } else {
+          await api("/tasks/" + editingId, { method: "PUT", body: JSON.stringify(data) });
+          setMessage("Task updated.");
+        }
+        resetForm();
+        await loadTasks();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    async function deleteTask(id) {
+      try {
+        await api("/tasks/" + id, { method: "DELETE" });
+        setMessage("Task deleted.");
+        await loadTasks();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    }
+
+    document.getElementById("registerBtn").onclick = register;
+    document.getElementById("loginBtn").onclick = login;
+    document.getElementById("logoutBtn").onclick = logout;
+    document.getElementById("filterBtn").onclick = refresh;
+    document.getElementById("saveBtn").onclick = saveTask;
+    document.getElementById("cancelBtn").onclick = resetForm;
+
+    updateLoginStatus();
+    if (token) {
+      refresh();
+    }
+  </script>
+</body>
+</html>

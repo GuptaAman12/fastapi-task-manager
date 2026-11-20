@@ -6,6 +6,7 @@ import jwt
 from pwdlib import PasswordHash
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -217,3 +218,6 @@ def login_user(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+app.mount("/app", StaticFiles(directory="frontend", html=True), name="frontend")
