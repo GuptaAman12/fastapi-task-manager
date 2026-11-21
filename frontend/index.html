@@ -36,7 +36,7 @@
     <button id="loginBtn">Login</button>
   </section>
 
-  <section>
+  <section id="tasksSection">
     <h2>Tasks</h2>
     <label>Filter by status
       <select id="filterStatus">
@@ -50,7 +50,7 @@
     <div id="taskList"></div>
   </section>
 
-  <section>
+  <section id="formSection">
     <h2 id="formTitle">Create task</h2>
     <label>Title <input id="taskTitle"></label>
     <label>Description <input id="taskDescription"></label>
@@ -88,8 +88,10 @@
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    function updateLoginStatus() {
+    function updateAuthState() {
       document.getElementById("loginStatus").textContent = token ? "yes" : "no";
+      document.getElementById("tasksSection").classList.toggle("hidden", !token);
+      document.getElementById("formSection").classList.toggle("hidden", !token);
     }
 
     async function api(path, options) {
@@ -100,6 +102,12 @@
       const response = await fetch(API + path, Object.assign({}, options, { headers: headers }));
       const data = await response.json().catch(function () { return {}; });
       if (!response.ok) {
+        if (response.status === 401 && path !== "/login") {
+          token = null;
+          localStorage.removeItem("token");
+          updateAuthState();
+          throw new Error("Session expired. Please log in again.");
+        }
         throw new Error(data.detail || ("Request failed: " + response.status));
       }
       return data;
@@ -132,7 +140,7 @@
         });
         token = data.access_token;
         localStorage.setItem("token", token);
-        updateLoginStatus();
+        updateAuthState();
         setMessage("Logged in.");
         await loadTasks();
       } catch (error) {
@@ -146,7 +154,7 @@
       tasks = [];
       renderTasks([]);
       resetForm();
-      updateLoginStatus();
+      updateAuthState();
       setMessage("Logged out.");
     }
 
@@ -238,6 +246,9 @@
     }
 
     async function deleteTask(id) {
+      if (!confirm("Delete this task?")) {
+        return;
+      }
       try {
         await api("/tasks/" + id, { method: "DELETE" });
         setMessage("Task deleted.");
@@ -254,7 +265,7 @@
     document.getElementById("saveBtn").onclick = saveTask;
     document.getElementById("cancelBtn").onclick = resetForm;
 
-    updateLoginStatus();
+    updateAuthState();
     if (token) {
       refresh();
     }
