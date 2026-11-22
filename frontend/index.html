@@ -46,6 +46,7 @@
         <option value="Completed">Completed</option>
       </select>
     </label>
+    <label>Search by title <input id="searchText"></label>
     <button id="filterBtn">Apply filter</button>
     <div id="taskList"></div>
   </section>
@@ -159,10 +160,18 @@
     }
 
     async function loadTasks() {
+      const params = [];
       const status = document.getElementById("filterStatus").value;
-      let path = "/tasks";
+      const search = document.getElementById("searchText").value.trim();
       if (status !== "") {
-        path += "?status=" + encodeURIComponent(status);
+        params.push("status=" + encodeURIComponent(status));
+      }
+      if (search !== "") {
+        params.push("search=" + encodeURIComponent(search));
+      }
+      let path = "/tasks";
+      if (params.length > 0) {
+        path += "?" + params.join("&");
       }
       tasks = await api(path);
       renderTasks(tasks);

@@ -81,6 +81,7 @@ def create_task(
 @app.get("/tasks", response_model=list[schemas.TaskResponse])
 def get_tasks(
     status: Literal["Pending", "In Progress", "Completed"] | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -90,6 +91,9 @@ def get_tasks(
 
     if status is not None:
         query = query.filter(models.Task.status == status)
+
+    if search:
+        query = query.filter(models.Task.title.contains(search))
 
     return query.all()
 
