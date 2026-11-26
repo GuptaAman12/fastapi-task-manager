@@ -8,7 +8,7 @@ A small FastAPI practice project: user registration, login with JWT, and task CR
 - `app/models.py` — SQLAlchemy tables (`users`, `tasks`)
 - `app/schemas.py` — Pydantic request/response shapes and validation
 - `app/database.py` — SQLite connection and `get_db()`
-- `frontend/index.html` — a simple HTML/CSS/JavaScript page that calls the API
+- `frontend/` — a React + Vite frontend (see below)
 - `tasks.db` — created automatically on first run (not committed)
 
 ## Setup
@@ -34,10 +34,23 @@ uvicorn app.main:app --reload
 Then open:
 
 - Swagger UI (test the API): http://127.0.0.1:8000/docs
-- Frontend: http://127.0.0.1:8000/app/
 - Health check: http://127.0.0.1:8000/health
 
 Press `Ctrl+C` to stop the server. `--reload` restarts it when you edit a file.
+
+## Frontend (React + Vite)
+
+The API must be running. In a second terminal:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (usually http://localhost:5173). Vite forwards `/api` requests to the API on port 8000, so no CORS setup is needed.
+
+`npm run build` creates a production build in `frontend/dist/`.
 
 ## Using the API
 
@@ -45,7 +58,7 @@ Press `Ctrl+C` to stop the server. `--reload` restarts it when you edit a file.
 2. `POST /login` with `email` and `password`. Copy the `access_token`.
 3. In Swagger, click **Authorize** and paste the token as `Bearer <token>`.
 
-The frontend does this for you: register, log in, then use the task form.
+The React frontend does this for you: register, log in, then use the task form.
 
 ## Endpoints
 
